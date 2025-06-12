@@ -8,7 +8,7 @@ from io import BytesIO
 st.set_page_config(page_title="Depixelate Image App")
 
 # App title
-st.title("Convert Pixel Art Back to Image (Depixelate)")
+st.title("Convert Pixel Art Back to Image")
 
 # Image uploader
 uploaded_file = st.file_uploader("Upload a pixelated image", type=["jpg", "jpeg", "png"])
