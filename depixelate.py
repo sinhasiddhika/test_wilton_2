@@ -74,4 +74,4 @@ if uploaded_file is not None:
     )
 
 else:
-    st.info("⬆ Please upload a pixelated image to continue.")
+    st.info("Please upload a pixelated image to continue.")
