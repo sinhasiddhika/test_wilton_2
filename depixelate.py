@@ -17,7 +17,7 @@ num_inference_steps = st.sidebar.slider("Inference Steps", 20, 100, 50)
 guidance_scale = st.sidebar.slider("Guidance Scale", 3.0, 20.0, 12.0, step=0.5)
 
 # ------------------- IMAGE UPLOAD -------------------
-uploaded_file = st.file_uploader("Upload a pixel art image", type=["jpg", "jpeg", "png", "bmp"])
+uploaded_file = st.file_uploader("Upload a pixel art image", type=["jpg", "jpeg", "png"])
 if uploaded_file is not None:
     pixel_art_img = Image.open(uploaded_file).convert("RGB")
     st.image(pixel_art_img, caption="Pixel Art Input", use_container_width=True)
