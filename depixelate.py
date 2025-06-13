@@ -53,7 +53,7 @@ if uploaded_file is not None:
         "Lanczos": cv2.INTER_LANCZOS4,
         "Nearest": cv2.INTER_NEAREST
     }
-
+    
     # Perform upsampling
     depixelated_img = cv2.resize(img_array, (target_width, target_height), interpolation=interpolation_map[method])
 
