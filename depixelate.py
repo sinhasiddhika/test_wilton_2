@@ -36,18 +36,133 @@ if uploaded_file is not None:
         # Enhancement parameters
         st.subheader("🎛️ Realistic Image Generation Controls")
         
+        # Output Size Configuration
+        with st.expander("📐 Output Size Configuration", expanded=True):
+            size_mode = st.radio(
+                "Size Control Method",
+                ["Upscale Factor", "Custom Dimensions", "Preset Sizes"],
+                help="Choose how to control the output image size"
+            )
+            
+            col_size1, col_size2 = st.columns(2)
+            
+            if size_mode == "Upscale Factor":
+                with col_size1:
+                    upscale_factor = st.selectbox(
+                        "Upscale Factor",
+                        [2, 4, 6, 8, 10, 12, 16, 20],
+                        index=3,  # Default to 8x
+                        help="Multiply original dimensions by this factor"
+                    )
+                    target_width = orig_width * upscale_factor
+                    target_height = orig_height * upscale_factor
+                
+                with col_size2:
+                    st.info(f"**Output Size:** {target_width} × {target_height} pixels")
+                    aspect_ratio = orig_width / orig_height
+                    st.caption(f"Original aspect ratio: {aspect_ratio:.2f}:1")
+            
+            elif size_mode == "Custom Dimensions":
+                with col_size1:
+                    target_width = st.number_input(
+                        "Output Width (pixels)",
+                        min_value=50,
+                        max_value=8000,
+                        value=orig_width * 4,
+                        step=50,
+                        help="Specify exact width in pixels"
+                    )
+                    
+                    target_height = st.number_input(
+                        "Output Height (pixels)",
+                        min_value=50,
+                        max_value=8000,
+                        value=orig_height * 4,
+                        step=50,
+                        help="Specify exact height in pixels"
+                    )
+                
+                with col_size2:
+                    # Calculate upscale factors for each dimension
+                    width_scale = target_width / orig_width
+                    height_scale = target_height / orig_height
+                    
+                    st.info(f"**Width Scale:** {width_scale:.1f}x")
+                    st.info(f"**Height Scale:** {height_scale:.1f}x")
+                    
+                    # Aspect ratio controls
+                    maintain_aspect = st.checkbox(
+                        "🔒 Maintain Aspect Ratio",
+                        value=False,
+                        help="Keep original proportions (may override height)"
+                    )
+                    
+                    if maintain_aspect:
+                        # Recalculate height based on width to maintain aspect ratio
+                        original_ratio = orig_width / orig_height
+                        target_height = int(target_width / original_ratio)
+                        st.caption(f"Height adjusted to {target_height} to maintain aspect ratio")
+                
+                # Set upscale_factor for compatibility with existing code
+                upscale_factor = max(width_scale, height_scale)
+            
+            else:  # Preset Sizes
+                with col_size1:
+                    preset_options = {
+                        "Instagram Square (1080×1080)": (1080, 1080),
+                        "Instagram Portrait (1080×1350)": (1080, 1350),
+                        "Facebook Cover (1200×630)": (1200, 630),
+                        "Twitter Header (1500×500)": (1500, 500),
+                        "HD (1920×1080)": (1920, 1080),
+                        "4K (3840×2160)": (3840, 2160),
+                        "Print 4×6 (1800×1200)": (1800, 1200),
+                        "Print 8×10 (3000×2400)": (3000, 2400),
+                        "A4 Portrait (2480×3508)": (2480, 3508),
+                        "A4 Landscape (3508×2480)": (3508, 2480)
+                    }
+                    
+                    selected_preset = st.selectbox(
+                        "Choose Preset Size",
+                        list(preset_options.keys()),
+                        help="Select from common social media and print sizes"
+                    )
+                    
+                    target_width, target_height = preset_options[selected_preset]
+                
+                with col_size2:
+                    st.info(f"**Selected Size:** {target_width} × {target_height}")
+                    
+                    # Option to fit or fill
+                    fit_mode = st.radio(
+                        "Scaling Mode",
+                        ["Fit (preserve aspect)", "Fill (stretch to fit)", "Crop to fit"],
+                        help="How to handle aspect ratio differences"
+                    )
+                    
+                    if fit_mode == "Fit (preserve aspect)":
+                        # Calculate the scale to fit within preset dimensions
+                        scale_w = target_width / orig_width
+                        scale_h = target_height / orig_height
+                        scale = min(scale_w, scale_h)
+                        
+                        # Adjust dimensions to maintain aspect ratio
+                        fitted_width = int(orig_width * scale)
+                        fitted_height = int(orig_height * scale)
+                        
+                        st.caption(f"Actual output: {fitted_width} × {fitted_height}")
+                        st.caption("(Image will be centered with padding if needed)")
+                        
+                        target_width, target_height = fitted_width, fitted_height
+                
+                # Set upscale_factor for compatibility
+                upscale_factor = max(target_width / orig_width, target_height / orig_height)
+        
         # Quality enhancement options
         with st.expander("🚀 AI Enhancement Options", expanded=True):
             col_q1, col_q2 = st.columns(2)
             
             with col_q1:
                 st.markdown("**🔧 Processing Options:**")
-                upscale_factor = st.selectbox(
-                    "Upscale Factor",
-                    [2, 4, 6, 8, 10, 12, 16],
-                    index=3,  # Default to 8x
-                    help="How much to enlarge the pixel art"
-                )
                 
                 enhancement_strength = st.slider(
                     "Enhancement Strength",
@@ -102,12 +217,25 @@ if uploaded_file is not None:
                 # Output format options
                 output_format = st.selectbox("Output Format", ["PNG", "JPEG"], help="Choose output file format")
         
-        # Calculate target dimensions
-        target_width = orig_width * upscale_factor
-        target_height = orig_height * upscale_factor
+        # Target dimensions are now set above based on size mode selection
         
-        # Show processing info
-        st.info(f"🎯 Processing: {orig_width}×{orig_height} → {target_width}×{target_height} pixels ({upscale_factor}x upscale)")
+        # Show processing info with more details
+        col_info1, col_info2 = st.columns(2)
+        with col_info1:
+            st.info(f"🎯 **Input:** {orig_width}×{orig_height} pixels")
+        with col_info2:
+            st.info(f"🎯 **Output:** {target_width}×{target_height} pixels")
+        
+        # Show scaling information
+        if size_mode == "Custom Dimensions":
+            width_scale = target_width / orig_width
+            height_scale = target_height / orig_height
+            if abs(width_scale - height_scale) > 0.1:
+                st.warning(f"⚠️ Non-uniform scaling detected: Width {width_scale:.1f}x, Height {height_scale:.1f}x. Image may appear stretched.")
+        elif size_mode == "Preset Sizes":
+            st.info(f"📱 Using preset: {selected_preset} with {fit_mode.lower()}")
+        else:
+            st.info(f"📈 Upscaling by {upscale_factor}x factor")
         
         def safe_image_resize(img, target_size):
             """Safely resize image with compatibility for different PIL versions"""
@@ -273,23 +401,76 @@ if uploaded_file is not None:
                                  enhancement_strength, noise_reduction, edge_enhancement,
                                  color_enhancement, texture_synthesis_flag, lighting_enhancement,
                                  preserve_style, smoothing_method, iterations, detail_boost,
-                                 contrast_boost, saturation_boost):
+                                 contrast_boost, saturation_boost, size_mode="Upscale Factor", fit_mode="Fill"):
             """Main function to convert pixel art to realistic image"""
             
             try:
                 # Check for reasonable dimensions to prevent memory issues
-                max_dimension = 4000
+                max_dimension = 8000
                 if target_width > max_dimension or target_height > max_dimension:
                     st.warning(f"Target dimensions too large. Limiting to {max_dimension}x{max_dimension}")
                     scale = min(max_dimension / target_width, max_dimension / target_height)
                     target_width = int(target_width * scale)
                     target_height = int(target_height * scale)
                 
-                # Step 1: Advanced upscaling
-                if realism_mode == "Sharp Details":
-                    upscaled_array = super_resolution_upscale(pixel_img, target_width, target_height, "INTER_LANCZOS4")
+                # Handle different fitting modes for preset sizes
+                if size_mode == "Preset Sizes" and 'fit_mode' in locals():
+                    if fit_mode == "Crop to fit":
+                        # First upscale to larger dimension, then crop
+                        orig_aspect = pixel_img.width / pixel_img.height
+                        target_aspect = target_width / target_height
+                        
+                        if orig_aspect > target_aspect:
+                            # Original is wider, scale by height
+                            temp_height = target_height
+                            temp_width = int(temp_height * orig_aspect)
+                        else:
+                            # Original is taller, scale by width
+                            temp_width = target_width
+                            temp_height = int(temp_width / orig_aspect)
+                        
+                        # Upscale to temporary dimensions
+                        upscaled_array = super_resolution_upscale(pixel_img, temp_width, temp_height, "INTER_CUBIC")
+                        upscaled_img = Image.fromarray(upscaled_array)
+                        
+                        # Crop to center
+                        left = (temp_width - target_width) // 2
+                        top = (temp_height - target_height) // 2
+                        right = left + target_width
+                        bottom = top + target_height
+                        
+                        upscaled_img = upscaled_img.crop((left, top, right, bottom))
+                        upscaled_array = np.array(upscaled_img)
+                        
+                    elif fit_mode == "Fit (preserve aspect)":
+                        # Scale to fit within dimensions, then pad if needed
+                        scale_w = target_width / pixel_img.width
+                        scale_h = target_height / pixel_img.height
+                        scale = min(scale_w, scale_h)
+                        
+                        fitted_width = int(pixel_img.width * scale)
+                        fitted_height = int(pixel_img.height * scale)
+                        
+                        # Upscale to fitted dimensions
+                        upscaled_array = super_resolution_upscale(pixel_img, fitted_width, fitted_height, "INTER_CUBIC")
+                        
+                        # Create canvas and center the image
+                        canvas = np.ones((target_height, target_width, 3), dtype=np.uint8) * 128  # Gray background
+                        
+                        y_offset = (target_height - fitted_height) // 2
+                        x_offset = (target_width - fitted_width) // 2
+                        
+                        canvas[y_offset:y_offset+fitted_height, x_offset:x_offset+fitted_width] = upscaled_array
+                        upscaled_array = canvas
+                    else:
+                        # Fill mode - stretch to fit
+                        upscaled_array = super_resolution_upscale(pixel_img, target_width, target_height, "INTER_CUBIC")
                 else:
-                    upscaled_array = super_resolution_upscale(pixel_img, target_width, target_height, "multi-step")
+                    # Standard upscaling
+                    if realism_mode == "Sharp Details":
+                        upscaled_array = super_resolution_upscale(pixel_img, target_width, target_height, "INTER_LANCZOS4")
+                    else:
+                        upscaled_array = super_resolution_upscale(pixel_img, target_width, target_height, "multi-step")
                 
                 # Step 2: Multiple enhancement iterations (limit iterations to prevent excessive processing)
                 enhanced_array = upscaled_array.copy()
@@ -365,7 +546,8 @@ if uploaded_file is not None:
                         enhancement_strength, noise_reduction, edge_enhancement,
                         color_enhancement, texture_synthesis, lighting_enhancement,
                         preserve_style, smoothing_method, iterations, detail_boost,
-                        contrast_boost, saturation_boost
+                        contrast_boost, saturation_boost, size_mode, 
+                        fit_mode if size_mode == "Preset Sizes" else "Fill"
                     )
                     
                     # Store the result in session state
