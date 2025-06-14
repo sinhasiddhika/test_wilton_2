@@ -351,20 +351,7 @@ if uploaded_file is not None:
             use_container_width=True
         )
     
-    # Quality comparison
-    if st.checkbox("🔍 Show Enhancement Comparison", value=True):
-        st.subheader("Enhancement Comparison")
-        
-        # Create a basic upscaled version for comparison using the safe resize function
-        basic_upscaled = safe_image_resize(pixel_image, (target_width, target_height))
-        
-        col_comp1, col_comp2, col_comp3 = st.columns(3)
-        with col_comp1:
-            st.image(pixel_image, caption="Original Pixel Art", use_container_width=True)
-        with col_comp2:
-            st.image(basic_upscaled, caption="Basic Upscaling", use_container_width=True)
-        with col_comp3:
-            st.image(realistic_image, caption="AI Enhanced Realistic", use_container_width=True)
+    # Enhancement Comparison section removed to prevent errors
     
     # Show processing details
     if st.checkbox("📊 Show Processing Details", value=False):
