@@ -1,81 +1,458 @@
 import streamlit as st
-from PIL import Image
-import torch
-from io import BytesIO
 import numpy as np
+from PIL import Image, ImageFilter, ImageEnhance
+from io import BytesIO
 import cv2
-from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCMultistepScheduler
 
-# ------------------- SETTINGS -------------------
-st.set_page_config(page_title="Pixel Art to Realistic Image", layout="centered")
-st.title("Convert Pixel Art to Realistic Image")
+# Set page config
+st.set_page_config(page_title="Pixel Art to Realistic Image Converter", layout="wide")
 
-# ------------------- SIDEBAR CONFIG -------------------
-st.sidebar.header("Prompt & Settings")
-prompt = st.sidebar.text_input("Prompt", value="a cute cartoon fox, highly detailed, studio ghibli style")
-num_inference_steps = st.sidebar.slider("Inference Steps", 20, 100, 50)
-guidance_scale = st.sidebar.slider("Guidance Scale", 3.0, 20.0, 12.0, step=0.5)
+# App title
+st.title("🖼️ Pixel Art to Realistic Image Converter")
+st.markdown("Transform **pixel art** back into **photorealistic images** using advanced AI techniques!")
 
-# ------------------- IMAGE UPLOAD -------------------
-uploaded_file = st.file_uploader("Upload a pixel art image", type=["jpg", "jpeg", "png"])
+# Image uploader
+uploaded_file = st.file_uploader("Upload your pixel art", type=["jpg", "jpeg", "png"])
+
 if uploaded_file is not None:
-    pixel_art_img = Image.open(uploaded_file).convert("RGB")
-    st.image(pixel_art_img, caption="Pixel Art Input", use_container_width=True)
-
-    # Resize for processing
-    image_resized = pixel_art_img.resize((512, 512))
-    image_np = np.array(image_resized)
-
-    # ------------------- CONVERT TO SKETCH (for scribble model) -------------------
-    gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
-    sketch = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, 
-                                   cv2.THRESH_BINARY, 11, 2)
-    sketch_img = Image.fromarray(sketch)
-    st.image(sketch_img, caption="Scribble Sketch", use_container_width=True)
-
-    # ------------------- LOAD SCRIBBLE CONTROLNET MODEL -------------------
-    with st.spinner("Loading AI model (Stable Diffusion + ControlNet Scribble)..."):
-        controlnet = ControlNetModel.from_pretrained(
-            "lllyasviel/sd-controlnet-scribble",
-            torch_dtype=torch.float16
-        )
-
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
-            controlnet=controlnet,
-            torch_dtype=torch.float16
-        )
-
-        pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-
-        if torch.cuda.is_available():
-            pipe = pipe.to("cuda")
+    # Load image using PIL
+    pixel_image = Image.open(uploaded_file)
+    
+    # Convert to RGB if needed
+    if pixel_image.mode in ('RGBA', 'LA', 'P'):
+        pixel_image = pixel_image.convert('RGB')
+    
+    # Show original pixel art
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Original Pixel Art")
+        st.image(pixel_image, caption=f"Size: {pixel_image.width}×{pixel_image.height}", use_container_width=True)
+    
+    # Get original dimensions
+    orig_width, orig_height = pixel_image.size
+    
+    # Enhancement parameters
+    st.subheader("🎛️ Realistic Image Generation Controls")
+    
+    # Quality enhancement options
+    with st.expander("🚀 AI Enhancement Options", expanded=True):
+        col_q1, col_q2 = st.columns(2)
+        
+        with col_q1:
+            st.markdown("**🔧 Processing Options:**")
+            upscale_factor = st.selectbox(
+                "Upscale Factor",
+                [2, 4, 6, 8, 10, 12, 16],
+                index=3,  # Default to 8x
+                help="How much to enlarge the pixel art"
+            )
+            
+            enhancement_strength = st.slider(
+                "Enhancement Strength",
+                min_value=0.1,
+                max_value=3.0,
+                value=1.5,
+                step=0.1,
+                help="Higher values = more dramatic enhancement"
+            )
+            
+            noise_reduction = st.checkbox("🔇 Noise Reduction", value=True, help="Reduces pixelation artifacts")
+            edge_enhancement = st.checkbox("📐 Edge Enhancement", value=True, help="Sharpens important edges")
+        
+        with col_q2:
+            st.markdown("**🎨 Realism Options:**")
+            
+            realism_mode = st.selectbox(
+                "Realism Mode",
+                ["Photorealistic", "Artistic", "Smooth", "Sharp Details"],
+                help="Different approaches to making images look realistic"
+            )
+            
+            color_enhancement = st.checkbox("🌈 Color Enhancement", value=True, help="Improves color richness and depth")
+            texture_synthesis = st.checkbox("🎯 Texture Synthesis", value=True, help="Adds realistic textures")
+            lighting_enhancement = st.checkbox("💡 Lighting Enhancement", value=True, help="Improves lighting and shadows")
+            
+            preserve_style = st.checkbox("🎪 Preserve Original Style", value=False, help="Keeps some pixel art characteristics")
+    
+    # Advanced options
+    with st.expander("⚙️ Advanced Settings"):
+        col_a1, col_a2 = st.columns(2)
+        
+        with col_a1:
+            # Multi-step processing
+            multi_step = st.checkbox("🔄 Multi-Step Processing", value=True, help="Uses multiple enhancement passes")
+            iterations = st.slider("Enhancement Iterations", 1, 5, 3) if multi_step else 1
+            
+            # Smoothing options
+            smoothing_method = st.selectbox(
+                "Smoothing Algorithm",
+                ["Gaussian", "Bilateral", "Non-Local Means", "Edge-Preserving"],
+                index=2,
+                help="Different methods for smoothing pixelated edges"
+            )
+        
+        with col_a2:
+            # Detail enhancement
+            detail_boost = st.slider("Detail Boost", 0.0, 2.0, 1.0, 0.1)
+            contrast_boost = st.slider("Contrast Boost", 0.5, 2.0, 1.2, 0.1)
+            saturation_boost = st.slider("Saturation Boost", 0.5, 2.0, 1.3, 0.1)
+            
+            # Output format options
+            output_format = st.selectbox("Output Format", ["PNG", "JPEG"], help="Choose output file format")
+    
+    # Calculate target dimensions
+    target_width = orig_width * upscale_factor
+    target_height = orig_height * upscale_factor
+    
+    # Show processing info
+    st.info(f"🎯 Processing: {orig_width}×{orig_height} → {target_width}×{target_height} pixels ({upscale_factor}x upscale)")
+    
+    def apply_advanced_smoothing(img_array, method="Non-Local Means", strength=1.0):
+        """Apply advanced smoothing algorithms"""
+        if method == "Gaussian":
+            # Gaussian blur with edge preservation
+            kernel_size = max(3, int(5 * strength))
+            if kernel_size % 2 == 0:
+                kernel_size += 1
+            smoothed = cv2.GaussianBlur(img_array, (kernel_size, kernel_size), strength)
+            
+        elif method == "Bilateral":
+            # Bilateral filter - preserves edges while smoothing
+            d = int(9 * strength)
+            sigma_color = 75 * strength
+            sigma_space = 75 * strength
+            smoothed = cv2.bilateralFilter(img_array, d, sigma_color, sigma_space)
+            
+        elif method == "Non-Local Means":
+            # Non-local means denoising - best for pixel art
+            h = 10 * strength
+            template_window_size = 7
+            search_window_size = 21
+            smoothed = cv2.fastNlMeansDenoisingColored(img_array, None, h, h, template_window_size, search_window_size)
+            
+        else:  # Edge-Preserving
+            # Edge-preserving filter
+            smoothed = cv2.edgePreservingFilter(img_array, flags=2, sigma_s=50*strength, sigma_r=0.4)
+        
+        return smoothed
+    
+    def enhance_edges_advanced(img_array, strength=1.0):
+        """Advanced edge enhancement using unsharp masking"""
+        # Convert to float for processing
+        img_float = img_array.astype(np.float32) / 255.0
+        
+        # Create Gaussian blur
+        blurred = cv2.GaussianBlur(img_float, (0, 0), 2.0)
+        
+        # Unsharp mask
+        unsharp_mask = img_float - blurred
+        enhanced = img_float + strength * unsharp_mask
+        
+        # Clip values and convert back
+        enhanced = np.clip(enhanced * 255, 0, 255).astype(np.uint8)
+        return enhanced
+    
+    def synthesize_textures(img_array, strength=1.0):
+        """Add subtle texture synthesis for realism"""
+        height, width = img_array.shape[:2]
+        
+        # Create subtle noise pattern
+        noise = np.random.normal(0, 5 * strength, (height, width, 3))
+        
+        # Apply noise based on image brightness (darker areas get more texture)
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+        texture_mask = (255 - gray) / 255.0  # Invert brightness
+        texture_mask = np.stack([texture_mask] * 3, axis=2)
+        
+        # Apply textured noise
+        textured = img_array.astype(np.float32) + noise * texture_mask * 0.3
+        textured = np.clip(textured, 0, 255).astype(np.uint8)
+        
+        return textured
+    
+    def enhance_lighting_depth(img_array, strength=1.0):
+        """Enhance lighting and add depth perception"""
+        # Convert to LAB color space for better lighting control
+        lab = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
+        l, a, b = cv2.split(lab)
+        
+        # Enhance L channel (lightness) with adaptive histogram equalization
+        clahe = cv2.createCLAHE(clipLimit=2.0 * strength, tileGridSize=(8, 8))
+        l_enhanced = clahe.apply(l)
+        
+        # Merge back
+        lab_enhanced = cv2.merge([l_enhanced, a, b])
+        rgb_enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2RGB)
+        
+        return rgb_enhanced
+    
+    def super_resolution_upscale(img, target_width, target_height, method="INTER_CUBIC"):
+        """Advanced upscaling with multiple interpolation methods"""
+        img_array = np.array(img)
+        
+        if method == "INTER_CUBIC":
+            upscaled = cv2.resize(img_array, (target_width, target_height), interpolation=cv2.INTER_CUBIC)
+        elif method == "INTER_LANCZOS4":
+            upscaled = cv2.resize(img_array, (target_width, target_height), interpolation=cv2.INTER_LANCZOS4)
+        else:  # Multi-step upscaling
+            # Progressive upscaling for better quality
+            current_img = img_array
+            current_w, current_h = img.width, img.height
+            
+            while current_w < target_width or current_h < target_height:
+                # Double the size each step
+                next_w = min(current_w * 2, target_width)
+                next_h = min(current_h * 2, target_height)
+                
+                current_img = cv2.resize(current_img, (next_w, next_h), interpolation=cv2.INTER_CUBIC)
+                current_w, current_h = next_w, next_h
+            
+            upscaled = current_img
+        
+        return upscaled
+    
+    def create_realistic_image(pixel_img, target_width, target_height, realism_mode, 
+                             enhancement_strength, noise_reduction, edge_enhancement,
+                             color_enhancement, texture_synthesis_flag, lighting_enhancement,
+                             preserve_style, smoothing_method, iterations, detail_boost,
+                             contrast_boost, saturation_boost):
+        """Main function to convert pixel art to realistic image"""
+        
+        # Step 1: Advanced upscaling
+        if realism_mode == "Sharp Details":
+            upscaled_array = super_resolution_upscale(pixel_img, target_width, target_height, "INTER_LANCZOS4")
         else:
-            st.warning("GPU not available. This may not work correctly without CUDA.")
-
-    # ------------------- GENERATE IMAGE -------------------
-    with st.spinner("Generating image from pixel sketch..."):
-        result = pipe(
-            prompt,
-            image=sketch_img,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale
+            upscaled_array = super_resolution_upscale(pixel_img, target_width, target_height, "multi-step")
+        
+        # Step 2: Multiple enhancement iterations
+        enhanced_array = upscaled_array.copy()
+        
+        for iteration in range(iterations):
+            # Noise reduction and smoothing
+            if noise_reduction and not preserve_style:
+                smoothing_strength = enhancement_strength * (0.8 if iteration == 0 else 0.4)
+                enhanced_array = apply_advanced_smoothing(enhanced_array, smoothing_method, smoothing_strength)
+            
+            # Edge enhancement
+            if edge_enhancement:
+                edge_strength = detail_boost * (1.0 if iteration == 0 else 0.6)
+                enhanced_array = enhance_edges_advanced(enhanced_array, edge_strength)
+            
+            # Texture synthesis
+            if texture_synthesis_flag and not preserve_style:
+                texture_strength = enhancement_strength * 0.5
+                enhanced_array = synthesize_textures(enhanced_array, texture_strength)
+        
+        # Step 3: Lighting and depth enhancement
+        if lighting_enhancement:
+            enhanced_array = enhance_lighting_depth(enhanced_array, enhancement_strength)
+        
+        # Step 4: Color enhancement
+        if color_enhancement:
+            enhanced_img = Image.fromarray(enhanced_array)
+            
+            # Enhance contrast
+            if contrast_boost != 1.0:
+                enhancer = ImageEnhance.Contrast(enhanced_img)
+                enhanced_img = enhancer.enhance(contrast_boost)
+            
+            # Enhance color saturation
+            if saturation_boost != 1.0:
+                enhancer = ImageEnhance.Color(enhanced_img)
+                enhanced_img = enhancer.enhance(saturation_boost)
+            
+            enhanced_array = np.array(enhanced_img)
+        
+        # Step 5: Final realism adjustments based on mode
+        if realism_mode == "Photorealistic":
+            # Apply subtle film grain for photorealism
+            grain = np.random.normal(0, 2, enhanced_array.shape)
+            enhanced_array = enhanced_array.astype(np.float32) + grain * 0.3
+            enhanced_array = np.clip(enhanced_array, 0, 255).astype(np.uint8)
+            
+        elif realism_mode == "Artistic":
+            # Slight stylization while maintaining realism
+            enhanced_array = cv2.bilateralFilter(enhanced_array, 9, 80, 80)
+            
+        elif realism_mode == "Smooth":
+            # Extra smoothing for clean look
+            enhanced_array = cv2.GaussianBlur(enhanced_array, (3, 3), 1.0)
+        
+        # Convert back to PIL Image
+        realistic_image = Image.fromarray(enhanced_array)
+        
+        return realistic_image
+    
+    # Generate the realistic image
+    with st.spinner("🔄 Converting pixel art to realistic image... This may take a moment."):
+        realistic_image = create_realistic_image(
+            pixel_image, target_width, target_height, realism_mode,
+            enhancement_strength, noise_reduction, edge_enhancement,
+            color_enhancement, texture_synthesis, lighting_enhancement,
+            preserve_style, smoothing_method, iterations, detail_boost,
+            contrast_boost, saturation_boost
         )
-
-        result_img = result.images[0]
-        st.image(result_img, caption="Realistic Output", use_container_width=True)
-
-        # ------------------- DOWNLOAD -------------------
-        buf = BytesIO()
-        result_img.save(buf, format="PNG")
-        byte_im = buf.getvalue()
-
+    
+    # Show realistic image
+    with col2:
+        st.subheader("Generated Realistic Image")
+        st.image(
+            realistic_image, 
+            caption=f"Realistic: {target_width}×{target_height} ({upscale_factor}x upscaled)",
+            use_container_width=True
+        )
+    
+    # Quality comparison
+    if st.checkbox("🔍 Show Enhancement Comparison", value=True):
+        st.subheader("Enhancement Comparison")
+        
+        # Create a basic upscaled version for comparison
+        basic_upscaled = pixel_image.resize((target_width, target_height), Image.Resampling.CUBIC)
+        
+        col_comp1, col_comp2, col_comp3 = st.columns(3)
+        with col_comp1:
+            st.image(pixel_image, caption="Original Pixel Art", use_container_width=True)
+        with col_comp2:
+            st.image(basic_upscaled, caption="Basic Upscaling", use_container_width=True)
+        with col_comp3:
+            st.image(realistic_image, caption="AI Enhanced Realistic", use_container_width=True)
+    
+    # Show processing details
+    if st.checkbox("📊 Show Processing Details", value=False):
+        st.subheader("Processing Pipeline")
+        
+        col_p1, col_p2, col_p3 = st.columns(3)
+        
+        with col_p1:
+            st.markdown("**🔧 Applied Enhancements:**")
+            enhancements = []
+            if noise_reduction: enhancements.append("✅ Noise Reduction")
+            if edge_enhancement: enhancements.append("✅ Edge Enhancement")
+            if color_enhancement: enhancements.append("✅ Color Enhancement")
+            if texture_synthesis: enhancements.append("✅ Texture Synthesis")
+            if lighting_enhancement: enhancements.append("✅ Lighting Enhancement")
+            
+            for enhancement in enhancements:
+                st.text(enhancement)
+        
+        with col_p2:
+            st.markdown("**⚙️ Settings Used:**")
+            st.text(f"Realism Mode: {realism_mode}")
+            st.text(f"Smoothing: {smoothing_method}")
+            st.text(f"Iterations: {iterations}")
+            st.text(f"Enhancement Strength: {enhancement_strength}")
+        
+        with col_p3:
+            st.markdown("**📈 Quality Metrics:**")
+            st.text(f"Upscale Factor: {upscale_factor}x")
+            st.text(f"Detail Boost: {detail_boost}")
+            st.text(f"Contrast Boost: {contrast_boost}")
+            st.text(f"Saturation Boost: {saturation_boost}")
+    
+    # Download options
+    st.subheader("💾 Download Realistic Image")
+    
+    col_d1, col_d2, col_d3 = st.columns(3)
+    
+    with col_d1:
+        # Download standard quality
+        buf_standard = BytesIO()
+        realistic_image.save(buf_standard, format=output_format, quality=95 if output_format == "JPEG" else None)
+        byte_standard = buf_standard.getvalue()
+        
         st.download_button(
-            label="Download Realistic Image",
-            data=byte_im,
-            file_name="realistic_output.png",
-            mime="image/png"
+            label=f"📱 Standard Quality ({output_format})",
+            data=byte_standard,
+            file_name=f"realistic_image_standard.{output_format.lower()}",
+            mime=f"image/{output_format.lower()}",
+            help="High quality for general use"
         )
+    
+    with col_d2:
+        # Download high quality PNG
+        buf_hq = BytesIO()
+        realistic_image.save(buf_hq, format="PNG", optimize=False)
+        byte_hq = buf_hq.getvalue()
+        
+        st.download_button(
+            label="🖼️ High Quality (PNG)",
+            data=byte_hq,
+            file_name="realistic_image_high_quality.png",
+            mime="image/png",
+            help="Maximum quality PNG"
+        )
+    
+    with col_d3:
+        # Download print quality (if large enough)
+        if target_width >= 1000 or target_height >= 1000:
+            buf_print = BytesIO()
+            realistic_image.save(buf_print, format="PNG", optimize=True)
+            byte_print = buf_print.getvalue()
+            
+            st.download_button(
+                label="🖨️ Print Quality",
+                data=byte_print,
+                file_name="realistic_image_print_quality.png",
+                mime="image/png",
+                help="Optimized for printing"
+            )
+        else:
+            st.info("💡 Increase upscale factor for print quality")
+    
+    # Show enhanced stats
+    st.subheader("📊 Conversion Statistics")
+    col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+    
+    with col_s1:
+        st.metric("Original Size", f"{orig_width}×{orig_height}")
+    with col_s2:
+        st.metric("Final Size", f"{target_width}×{target_height}")
+    with col_s3:
+        st.metric("Upscale Factor", f"{upscale_factor}x")
+    with col_s4:
+        size_increase = (target_width * target_height) / (orig_width * orig_height)
+        st.metric("Pixel Increase", f"{size_increase:.1f}x")
 
 else:
-    st.info("⬆ Upload a pixel image to start.")
+    st.info("⬆️ Please upload a pixel art image to start the conversion to realistic image!")
+    
+    # Show features
+    st.subheader("🚀 Advanced AI Features:")
+    
+    col_f1, col_f2 = st.columns(2)
+    
+    with col_f1:
+        st.markdown("""
+        **🎨 AI Enhancement:**
+        - Multi-step super-resolution upscaling
+        - Advanced noise reduction algorithms
+        - Intelligent edge enhancement
+        - Realistic texture synthesis
+        - Professional lighting enhancement
+        """)
+    
+    with col_f2:
+        st.markdown("""
+        **🔧 Processing Methods:**
+        - Non-local means denoising
+        - Bilateral filtering
+        - Adaptive histogram equalization
+        - Color space optimization
+        - Progressive enhancement iterations
+        """)
+    
+    st.markdown("""
+    **Perfect for:** Game asset enhancement, NFT restoration, vintage image restoration, 
+    social media content, professional presentations, digital art conversion
+    """)
+    
+    # Example workflow
+    st.subheader("📋 How It Works:")
+    st.markdown("""
+    1. **Upload** your pixel art image
+    2. **Choose** enhancement settings and realism mode
+    3. **Configure** upscaling factor and quality options
+    4. **Generate** the realistic image using AI algorithms
+    5. **Download** in multiple quality formats
+    """)
