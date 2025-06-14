@@ -108,6 +108,19 @@ if uploaded_file is not None:
     # Show processing info
     st.info(f"🎯 Processing: {orig_width}×{orig_height} → {target_width}×{target_height} pixels ({upscale_factor}x upscale)")
     
+    def safe_image_resize(img, target_size):
+        """Safely resize image with compatibility for different PIL versions"""
+        try:
+            # Try new Pillow syntax first (Pillow >= 10.0.0)
+            return img.resize(target_size, Image.Resampling.LANCZOS)
+        except AttributeError:
+            try:
+                # Try older Pillow syntax (Pillow 9.x)
+                return img.resize(target_size, Image.LANCZOS)
+            except AttributeError:
+                # Fallback to even older syntax
+                return img.resize(target_size, Image.ANTIALIAS)
+    
     def apply_advanced_smoothing(img_array, method="Non-Local Means", strength=1.0):
         """Apply advanced smoothing algorithms"""
         try:
@@ -147,53 +160,65 @@ if uploaded_file is not None:
     
     def enhance_edges_advanced(img_array, strength=1.0):
         """Advanced edge enhancement using unsharp masking"""
-        # Convert to float for processing
-        img_float = img_array.astype(np.float32) / 255.0
-        
-        # Create Gaussian blur
-        blurred = cv2.GaussianBlur(img_float, (0, 0), 2.0)
-        
-        # Unsharp mask
-        unsharp_mask = img_float - blurred
-        enhanced = img_float + strength * unsharp_mask
-        
-        # Clip values and convert back
-        enhanced = np.clip(enhanced * 255, 0, 255).astype(np.uint8)
-        return enhanced
+        try:
+            # Convert to float for processing
+            img_float = img_array.astype(np.float32) / 255.0
+            
+            # Create Gaussian blur
+            blurred = cv2.GaussianBlur(img_float, (0, 0), 2.0)
+            
+            # Unsharp mask
+            unsharp_mask = img_float - blurred
+            enhanced = img_float + strength * unsharp_mask
+            
+            # Clip values and convert back
+            enhanced = np.clip(enhanced * 255, 0, 255).astype(np.uint8)
+            return enhanced
+        except Exception as e:
+            st.warning(f"Edge enhancement failed: {str(e)}")
+            return img_array
     
     def synthesize_textures(img_array, strength=1.0):
         """Add subtle texture synthesis for realism"""
-        height, width = img_array.shape[:2]
-        
-        # Create subtle noise pattern
-        noise = np.random.normal(0, 5 * strength, (height, width, 3))
-        
-        # Apply noise based on image brightness (darker areas get more texture)
-        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-        texture_mask = (255 - gray) / 255.0  # Invert brightness
-        texture_mask = np.stack([texture_mask] * 3, axis=2)
-        
-        # Apply textured noise
-        textured = img_array.astype(np.float32) + noise * texture_mask * 0.3
-        textured = np.clip(textured, 0, 255).astype(np.uint8)
-        
-        return textured
+        try:
+            height, width = img_array.shape[:2]
+            
+            # Create subtle noise pattern
+            noise = np.random.normal(0, 5 * strength, (height, width, 3))
+            
+            # Apply noise based on image brightness (darker areas get more texture)
+            gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+            texture_mask = (255 - gray) / 255.0  # Invert brightness
+            texture_mask = np.stack([texture_mask] * 3, axis=2)
+            
+            # Apply textured noise
+            textured = img_array.astype(np.float32) + noise * texture_mask * 0.3
+            textured = np.clip(textured, 0, 255).astype(np.uint8)
+            
+            return textured
+        except Exception as e:
+            st.warning(f"Texture synthesis failed: {str(e)}")
+            return img_array
     
     def enhance_lighting_depth(img_array, strength=1.0):
         """Enhance lighting and add depth perception"""
-        # Convert to LAB color space for better lighting control
-        lab = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
-        l, a, b = cv2.split(lab)
-        
-        # Enhance L channel (lightness) with adaptive histogram equalization
-        clahe = cv2.createCLAHE(clipLimit=2.0 * strength, tileGridSize=(8, 8))
-        l_enhanced = clahe.apply(l)
-        
-        # Merge back
-        lab_enhanced = cv2.merge([l_enhanced, a, b])
-        rgb_enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2RGB)
-        
-        return rgb_enhanced
+        try:
+            # Convert to LAB color space for better lighting control
+            lab = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
+            l, a, b = cv2.split(lab)
+            
+            # Enhance L channel (lightness) with adaptive histogram equalization
+            clahe = cv2.createCLAHE(clipLimit=2.0 * strength, tileGridSize=(8, 8))
+            l_enhanced = clahe.apply(l)
+            
+            # Merge back
+            lab_enhanced = cv2.merge([l_enhanced, a, b])
+            rgb_enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2RGB)
+            
+            return rgb_enhanced
+        except Exception as e:
+            st.warning(f"Lighting enhancement failed: {str(e)}")
+            return img_array
     
     def super_resolution_upscale(img, target_width, target_height, method="INTER_CUBIC"):
         """Advanced upscaling with multiple interpolation methods"""
@@ -232,80 +257,90 @@ if uploaded_file is not None:
                              contrast_boost, saturation_boost):
         """Main function to convert pixel art to realistic image"""
         
-        # Step 1: Advanced upscaling
-        if realism_mode == "Sharp Details":
-            upscaled_array = super_resolution_upscale(pixel_img, target_width, target_height, "INTER_LANCZOS4")
-        else:
-            upscaled_array = super_resolution_upscale(pixel_img, target_width, target_height, "multi-step")
-        
-        # Step 2: Multiple enhancement iterations
-        enhanced_array = upscaled_array.copy()
-        
-        for iteration in range(iterations):
-            # Noise reduction and smoothing
-            if noise_reduction and not preserve_style:
-                smoothing_strength = enhancement_strength * (0.8 if iteration == 0 else 0.4)
-                enhanced_array = apply_advanced_smoothing(enhanced_array, smoothing_method, smoothing_strength)
+        try:
+            # Step 1: Advanced upscaling
+            if realism_mode == "Sharp Details":
+                upscaled_array = super_resolution_upscale(pixel_img, target_width, target_height, "INTER_LANCZOS4")
+            else:
+                upscaled_array = super_resolution_upscale(pixel_img, target_width, target_height, "multi-step")
             
-            # Edge enhancement
-            if edge_enhancement:
-                edge_strength = detail_boost * (1.0 if iteration == 0 else 0.6)
-                enhanced_array = enhance_edges_advanced(enhanced_array, edge_strength)
+            # Step 2: Multiple enhancement iterations
+            enhanced_array = upscaled_array.copy()
             
-            # Texture synthesis
-            if texture_synthesis_flag and not preserve_style:
-                texture_strength = enhancement_strength * 0.5
-                enhanced_array = synthesize_textures(enhanced_array, texture_strength)
-        
-        # Step 3: Lighting and depth enhancement
-        if lighting_enhancement:
-            enhanced_array = enhance_lighting_depth(enhanced_array, enhancement_strength)
-        
-        # Step 4: Color enhancement
-        if color_enhancement:
-            enhanced_img = Image.fromarray(enhanced_array)
+            for iteration in range(iterations):
+                # Noise reduction and smoothing
+                if noise_reduction and not preserve_style:
+                    smoothing_strength = enhancement_strength * (0.8 if iteration == 0 else 0.4)
+                    enhanced_array = apply_advanced_smoothing(enhanced_array, smoothing_method, smoothing_strength)
+                
+                # Edge enhancement
+                if edge_enhancement:
+                    edge_strength = detail_boost * (1.0 if iteration == 0 else 0.6)
+                    enhanced_array = enhance_edges_advanced(enhanced_array, edge_strength)
+                
+                # Texture synthesis
+                if texture_synthesis_flag and not preserve_style:
+                    texture_strength = enhancement_strength * 0.5
+                    enhanced_array = synthesize_textures(enhanced_array, texture_strength)
             
-            # Enhance contrast
-            if contrast_boost != 1.0:
-                enhancer = ImageEnhance.Contrast(enhanced_img)
-                enhanced_img = enhancer.enhance(contrast_boost)
+            # Step 3: Lighting and depth enhancement
+            if lighting_enhancement:
+                enhanced_array = enhance_lighting_depth(enhanced_array, enhancement_strength)
             
-            # Enhance color saturation
-            if saturation_boost != 1.0:
-                enhancer = ImageEnhance.Color(enhanced_img)
-                enhanced_img = enhancer.enhance(saturation_boost)
+            # Step 4: Color enhancement
+            if color_enhancement:
+                enhanced_img = Image.fromarray(enhanced_array)
+                
+                # Enhance contrast
+                if contrast_boost != 1.0:
+                    enhancer = ImageEnhance.Contrast(enhanced_img)
+                    enhanced_img = enhancer.enhance(contrast_boost)
+                
+                # Enhance color saturation
+                if saturation_boost != 1.0:
+                    enhancer = ImageEnhance.Color(enhanced_img)
+                    enhanced_img = enhancer.enhance(saturation_boost)
+                
+                enhanced_array = np.array(enhanced_img)
             
-            enhanced_array = np.array(enhanced_img)
-        
-        # Step 5: Final realism adjustments based on mode
-        if realism_mode == "Photorealistic":
-            # Apply subtle film grain for photorealism
-            grain = np.random.normal(0, 2, enhanced_array.shape)
-            enhanced_array = enhanced_array.astype(np.float32) + grain * 0.3
-            enhanced_array = np.clip(enhanced_array, 0, 255).astype(np.uint8)
+            # Step 5: Final realism adjustments based on mode
+            if realism_mode == "Photorealistic":
+                # Apply subtle film grain for photorealism
+                grain = np.random.normal(0, 2, enhanced_array.shape)
+                enhanced_array = enhanced_array.astype(np.float32) + grain * 0.3
+                enhanced_array = np.clip(enhanced_array, 0, 255).astype(np.uint8)
+                
+            elif realism_mode == "Artistic":
+                # Slight stylization while maintaining realism
+                enhanced_array = cv2.bilateralFilter(enhanced_array, 9, 80, 80)
+                
+            elif realism_mode == "Smooth":
+                # Extra smoothing for clean look
+                enhanced_array = cv2.GaussianBlur(enhanced_array, (3, 3), 1.0)
             
-        elif realism_mode == "Artistic":
-            # Slight stylization while maintaining realism
-            enhanced_array = cv2.bilateralFilter(enhanced_array, 9, 80, 80)
+            # Convert back to PIL Image
+            realistic_image = Image.fromarray(enhanced_array)
             
-        elif realism_mode == "Smooth":
-            # Extra smoothing for clean look
-            enhanced_array = cv2.GaussianBlur(enhanced_array, (3, 3), 1.0)
-        
-        # Convert back to PIL Image
-        realistic_image = Image.fromarray(enhanced_array)
-        
-        return realistic_image
+            return realistic_image
+            
+        except Exception as e:
+            st.error(f"Error during image processing: {str(e)}")
+            # Return a basic upscaled version as fallback
+            return safe_image_resize(pixel_img, (target_width, target_height))
     
     # Generate the realistic image
     with st.spinner("🔄 Converting pixel art to realistic image... This may take a moment."):
-        realistic_image = create_realistic_image(
-            pixel_image, target_width, target_height, realism_mode,
-            enhancement_strength, noise_reduction, edge_enhancement,
-            color_enhancement, texture_synthesis, lighting_enhancement,
-            preserve_style, smoothing_method, iterations, detail_boost,
-            contrast_boost, saturation_boost
-        )
+        try:
+            realistic_image = create_realistic_image(
+                pixel_image, target_width, target_height, realism_mode,
+                enhancement_strength, noise_reduction, edge_enhancement,
+                color_enhancement, texture_synthesis, lighting_enhancement,
+                preserve_style, smoothing_method, iterations, detail_boost,
+                contrast_boost, saturation_boost
+            )
+        except Exception as e:
+            st.error(f"Failed to process image: {str(e)}")
+            realistic_image = safe_image_resize(pixel_image, (target_width, target_height))
     
     # Show realistic image
     with col2:
@@ -320,13 +355,8 @@ if uploaded_file is not None:
     if st.checkbox("🔍 Show Enhancement Comparison", value=True):
         st.subheader("Enhancement Comparison")
         
-        # Create a basic upscaled version for comparison
-        try:
-            # Try new Pillow syntax first
-            basic_upscaled = pixel_image.resize((target_width, target_height), Image.Resampling.BICUBIC)
-        except AttributeError:
-            # Fallback to older Pillow syntax
-            basic_upscaled = pixel_image.resize((target_width, target_height), Image.BICUBIC)
+        # Create a basic upscaled version for comparison using the safe resize function
+        basic_upscaled = safe_image_resize(pixel_image, (target_width, target_height))
         
         col_comp1, col_comp2, col_comp3 = st.columns(3)
         with col_comp1:
@@ -375,46 +405,55 @@ if uploaded_file is not None:
     
     with col_d1:
         # Download standard quality
-        buf_standard = BytesIO()
-        realistic_image.save(buf_standard, format=output_format, quality=95 if output_format == "JPEG" else None)
-        byte_standard = buf_standard.getvalue()
-        
-        st.download_button(
-            label=f"📱 Standard Quality ({output_format})",
-            data=byte_standard,
-            file_name=f"realistic_image_standard.{output_format.lower()}",
-            mime=f"image/{output_format.lower()}",
-            help="High quality for general use"
-        )
+        try:
+            buf_standard = BytesIO()
+            realistic_image.save(buf_standard, format=output_format, quality=95 if output_format == "JPEG" else None)
+            byte_standard = buf_standard.getvalue()
+            
+            st.download_button(
+                label=f"📱 Standard Quality ({output_format})",
+                data=byte_standard,
+                file_name=f"realistic_image_standard.{output_format.lower()}",
+                mime=f"image/{output_format.lower()}",
+                help="High quality for general use"
+            )
+        except Exception as e:
+            st.error(f"Error preparing download: {str(e)}")
     
     with col_d2:
         # Download high quality PNG
-        buf_hq = BytesIO()
-        realistic_image.save(buf_hq, format="PNG", optimize=False)
-        byte_hq = buf_hq.getvalue()
-        
-        st.download_button(
-            label="🖼️ High Quality (PNG)",
-            data=byte_hq,
-            file_name="realistic_image_high_quality.png",
-            mime="image/png",
-            help="Maximum quality PNG"
-        )
+        try:
+            buf_hq = BytesIO()
+            realistic_image.save(buf_hq, format="PNG", optimize=False)
+            byte_hq = buf_hq.getvalue()
+            
+            st.download_button(
+                label="🖼️ High Quality (PNG)",
+                data=byte_hq,
+                file_name="realistic_image_high_quality.png",
+                mime="image/png",
+                help="Maximum quality PNG"
+            )
+        except Exception as e:
+            st.error(f"Error preparing PNG download: {str(e)}")
     
     with col_d3:
         # Download print quality (if large enough)
         if target_width >= 1000 or target_height >= 1000:
-            buf_print = BytesIO()
-            realistic_image.save(buf_print, format="PNG", optimize=True)
-            byte_print = buf_print.getvalue()
-            
-            st.download_button(
-                label="🖨️ Print Quality",
-                data=byte_print,
-                file_name="realistic_image_print_quality.png",
-                mime="image/png",
-                help="Optimized for printing"
-            )
+            try:
+                buf_print = BytesIO()
+                realistic_image.save(buf_print, format="PNG", optimize=True)
+                byte_print = buf_print.getvalue()
+                
+                st.download_button(
+                    label="🖨️ Print Quality",
+                    data=byte_print,
+                    file_name="realistic_image_print_quality.png",
+                    mime="image/png",
+                    help="Optimized for printing"
+                )
+            except Exception as e:
+                st.error(f"Error preparing print quality download: {str(e)}")
         else:
             st.info("💡 Increase upscale factor for print quality")
     
