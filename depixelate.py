@@ -110,30 +110,38 @@ if uploaded_file is not None:
     
     def apply_advanced_smoothing(img_array, method="Non-Local Means", strength=1.0):
         """Apply advanced smoothing algorithms"""
-        if method == "Gaussian":
-            # Gaussian blur with edge preservation
-            kernel_size = max(3, int(5 * strength))
+        try:
+            if method == "Gaussian":
+                # Gaussian blur with edge preservation
+                kernel_size = max(3, int(5 * strength))
+                if kernel_size % 2 == 0:
+                    kernel_size += 1
+                smoothed = cv2.GaussianBlur(img_array, (kernel_size, kernel_size), strength)
+                
+            elif method == "Bilateral":
+                # Bilateral filter - preserves edges while smoothing
+                d = int(9 * strength)
+                sigma_color = 75 * strength
+                sigma_space = 75 * strength
+                smoothed = cv2.bilateralFilter(img_array, d, sigma_color, sigma_space)
+                
+            elif method == "Non-Local Means":
+                # Non-local means denoising - best for pixel art
+                h = 10 * strength
+                template_window_size = 7
+                search_window_size = 21
+                smoothed = cv2.fastNlMeansDenoisingColored(img_array, None, h, h, template_window_size, search_window_size)
+                
+            else:  # Edge-Preserving
+                # Edge-preserving filter
+                smoothed = cv2.edgePreservingFilter(img_array, flags=2, sigma_s=50*strength, sigma_r=0.4)
+        except Exception as e:
+            # Fallback to Gaussian blur if advanced methods fail
+            st.warning(f"Advanced smoothing failed, using Gaussian blur: {str(e)}")
+            kernel_size = max(3, int(3 * strength))
             if kernel_size % 2 == 0:
                 kernel_size += 1
             smoothed = cv2.GaussianBlur(img_array, (kernel_size, kernel_size), strength)
-            
-        elif method == "Bilateral":
-            # Bilateral filter - preserves edges while smoothing
-            d = int(9 * strength)
-            sigma_color = 75 * strength
-            sigma_space = 75 * strength
-            smoothed = cv2.bilateralFilter(img_array, d, sigma_color, sigma_space)
-            
-        elif method == "Non-Local Means":
-            # Non-local means denoising - best for pixel art
-            h = 10 * strength
-            template_window_size = 7
-            search_window_size = 21
-            smoothed = cv2.fastNlMeansDenoisingColored(img_array, None, h, h, template_window_size, search_window_size)
-            
-        else:  # Edge-Preserving
-            # Edge-preserving filter
-            smoothed = cv2.edgePreservingFilter(img_array, flags=2, sigma_s=50*strength, sigma_r=0.4)
         
         return smoothed
     
@@ -191,24 +199,29 @@ if uploaded_file is not None:
         """Advanced upscaling with multiple interpolation methods"""
         img_array = np.array(img)
         
-        if method == "INTER_CUBIC":
-            upscaled = cv2.resize(img_array, (target_width, target_height), interpolation=cv2.INTER_CUBIC)
-        elif method == "INTER_LANCZOS4":
-            upscaled = cv2.resize(img_array, (target_width, target_height), interpolation=cv2.INTER_LANCZOS4)
-        else:  # Multi-step upscaling
-            # Progressive upscaling for better quality
-            current_img = img_array
-            current_w, current_h = img.width, img.height
-            
-            while current_w < target_width or current_h < target_height:
-                # Double the size each step
-                next_w = min(current_w * 2, target_width)
-                next_h = min(current_h * 2, target_height)
+        try:
+            if method == "INTER_CUBIC":
+                upscaled = cv2.resize(img_array, (target_width, target_height), interpolation=cv2.INTER_CUBIC)
+            elif method == "INTER_LANCZOS4":
+                upscaled = cv2.resize(img_array, (target_width, target_height), interpolation=cv2.INTER_LANCZOS4)
+            else:  # Multi-step upscaling
+                # Progressive upscaling for better quality
+                current_img = img_array
+                current_w, current_h = img.width, img.height
                 
-                current_img = cv2.resize(current_img, (next_w, next_h), interpolation=cv2.INTER_CUBIC)
-                current_w, current_h = next_w, next_h
-            
-            upscaled = current_img
+                while current_w < target_width or current_h < target_height:
+                    # Double the size each step
+                    next_w = min(current_w * 2, target_width)
+                    next_h = min(current_h * 2, target_height)
+                    
+                    current_img = cv2.resize(current_img, (next_w, next_h), interpolation=cv2.INTER_CUBIC)
+                    current_w, current_h = next_w, next_h
+                
+                upscaled = current_img
+        except Exception as e:
+            # Fallback to basic cubic interpolation if advanced methods fail
+            st.warning(f"Advanced upscaling failed, using basic method: {str(e)}")
+            upscaled = cv2.resize(img_array, (target_width, target_height), interpolation=cv2.INTER_CUBIC)
         
         return upscaled
     
@@ -308,7 +321,12 @@ if uploaded_file is not None:
         st.subheader("Enhancement Comparison")
         
         # Create a basic upscaled version for comparison
-        basic_upscaled = pixel_image.resize((target_width, target_height), Image.Resampling.CUBIC)
+        try:
+            # Try new Pillow syntax first
+            basic_upscaled = pixel_image.resize((target_width, target_height), Image.Resampling.BICUBIC)
+        except AttributeError:
+            # Fallback to older Pillow syntax
+            basic_upscaled = pixel_image.resize((target_width, target_height), Image.BICUBIC)
         
         col_comp1, col_comp2, col_comp3 = st.columns(3)
         with col_comp1:
