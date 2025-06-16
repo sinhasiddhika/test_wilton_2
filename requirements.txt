@@ -1,10 +1,10 @@
-streamlit
 numpy
 Pillow
 matplotlib
 scikit-image
 opencv-python-headless
-realesrgan
-basicsr
-facexlib
-gfpgan
+realesrgan==0.3.0
+basicsr==1.4.2
+facexlib==0.3.0
+gfpgan==1.3.8
+streamlit==1.35.0
