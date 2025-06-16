@@ -33,6 +33,7 @@ model_choice = st.sidebar.selectbox(
 )
 
 # API Configuration
+api_key = None
 if "API" in model_choice:
     st.sidebar.subheader("🔧 API Configuration")
     
@@ -75,6 +76,11 @@ if uploaded_file is not None:
             
             with col_ai1:
                 upscale_factor = st.selectbox("Upscale Factor", [4, 6, 8, 10], index=1)
+                
+                enhancement_strength = 1.5
+                texture_synthesis = True
+                detail_hallucination = True
+                ai_model_type = "Photorealistic"
                 
                 if model_choice == "Enhanced AI-Simulation (Recommended)":
                     enhancement_strength = st.slider("Enhancement Strength", 0.5, 2.0, 1.5, 0.1)
@@ -126,12 +132,20 @@ if uploaded_file is not None:
             
             # Detect edges and textures
             edges = cv2.Canny(gray, 50, 150)
-            texture_map = filters.rank.entropy(gray, morphology.disk(3))
+            
+            # Use a simple texture measure instead of rank entropy
+            kernel = np.ones((3,3), np.float32) / 9
+            texture_map = cv2.filter2D(gray.astype(np.float32), -1, kernel)
+            texture_map = cv2.Laplacian(texture_map, cv2.CV_64F)
+            texture_map = np.abs(texture_map)
             
             # Resize maps to target size
             edges_resized = cv2.resize(edges, (target_w, target_h)) / 255.0
             texture_resized = cv2.resize(texture_map.astype(np.float32), (target_w, target_h))
-            texture_resized = (texture_resized - texture_resized.min()) / (texture_resized.max() - texture_resized.min())
+            if texture_resized.max() > texture_resized.min():
+                texture_resized = (texture_resized - texture_resized.min()) / (texture_resized.max() - texture_resized.min())
+            else:
+                texture_resized = np.zeros_like(texture_resized)
             
             # Intelligent blending based on content
             base_result = np.zeros((target_h, target_w, 3), dtype=np.float64)
@@ -179,6 +193,7 @@ if uploaded_file is not None:
             h, w = image.shape[:2]
             
             # Create multiple texture patterns
+            np.random.seed(42)  # For reproducible results
             noise_fine = np.random.normal(0, 5, (h, w))
             noise_medium = cv2.GaussianBlur(np.random.normal(0, 10, (h, w)), (5, 5), 0)
             noise_coarse = cv2.GaussianBlur(np.random.normal(0, 15, (h, w)), (15, 15), 0)
@@ -221,13 +236,14 @@ if uploaded_file is not None:
                 
                 # Create lighting-like effects
                 h, w = image.shape[:2]
-                y_coords, x_coords = np.ogrid[:h, :w]
                 
                 # Simulate directional lighting
                 light_dir = np.array([0.3, 0.5, 0.8])  # Light from upper right
                 
                 surface_normal = np.stack([surface_x, surface_y, np.ones_like(surface_x)], axis=2)
-                surface_normal = surface_normal / np.linalg.norm(surface_normal, axis=2, keepdims=True)
+                norms = np.linalg.norm(surface_normal, axis=2, keepdims=True)
+                norms[norms == 0] = 1  # Avoid division by zero
+                surface_normal = surface_normal / norms
                 
                 lighting = np.dot(surface_normal, light_dir)
                 lighting = np.clip(lighting, 0.7, 1.3)  # Subtle lighting
@@ -314,7 +330,10 @@ if uploaded_file is not None:
             edges_canny = cv2.Canny(gray, 50, 150)
             edges_sobel = cv2.Sobel(gray, cv2.CV_64F, 1, 1, ksize=3)
             edges_sobel = np.abs(edges_sobel)
-            edges_sobel = (edges_sobel / edges_sobel.max() * 255).astype(np.uint8)
+            if edges_sobel.max() > 0:
+                edges_sobel = (edges_sobel / edges_sobel.max() * 255).astype(np.uint8)
+            else:
+                edges_sobel = np.zeros_like(edges_sobel, dtype=np.uint8)
             
             # Combine edge maps
             edges_combined = cv2.addWeighted(edges_canny, 0.6, edges_sobel, 0.4, 0)
@@ -343,6 +362,7 @@ if uploaded_file is not None:
             
             # Add subtle film grain for realism
             h, w, c = result.shape
+            np.random.seed(42)  # For reproducible results
             grain = np.random.normal(0, realism_level * 2, (h, w, c))
             
             # Apply grain selectively (more in darker areas)
@@ -369,38 +389,13 @@ if uploaded_file is not None:
             
             return result
 
-        async def call_real_esrgan_api(image, api_key, upscale_factor=4):
+        def call_real_esrgan_api(image, api_key, upscale_factor=4):
             """
-            Call Real-ESRGAN API
+            Call Real-ESRGAN API (simplified for now)
             """
             try:
-                import replicate
-                
-                # Convert image to base64
-                buffered = BytesIO()
-                image.save(buffered, format="PNG")
-                img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-                
-                # Configure Replicate
-                replicate.Client(api_token=api_key)
-                
-                # Run Real-ESRGAN
-                output = replicate.run(
-                    "nightmareai/real-esrgan:42fed1c4974146d4d2414e2be2c5277c7fcf05fcc3a73abf41610695738c1d7b",
-                    input={
-                        "image": f"data:image/png;base64,{img_base64}",
-                        "scale": upscale_factor,
-                        "face_enhance": False
-                    }
-                )
-                
-                # Download the result
-                response = requests.get(output)
-                if response.status_code == 200:
-                    result_image = Image.open(BytesIO(response.content))
-                    return np.array(result_image)
-                else:
-                    raise Exception("Failed to download result")
+                st.warning("Real-ESRGAN API integration requires additional setup. Using enhanced simulation instead.")
+                return None
                     
             except Exception as e:
                 st.error(f"Real-ESRGAN API Error: {str(e)}")
