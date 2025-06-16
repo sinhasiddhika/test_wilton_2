@@ -14,6 +14,16 @@ import time
 # Set page config
 st.set_page_config(page_title="AI Pixel Art to Realistic Image Converter", layout="wide")
 
+# Initialize session state variables
+if 'realistic_image' not in st.session_state:
+    st.session_state.realistic_image = None
+if 'target_width' not in st.session_state:
+    st.session_state.target_width = 0
+if 'target_height' not in st.session_state:
+    st.session_state.target_height = 0
+if 'upscale_factor' not in st.session_state:
+    st.session_state.upscale_factor = 4
+
 # App title
 st.title("🤖 AI Pixel Art to Realistic Image Converter")
 st.markdown("Transform **pixel art** into **photorealistic images** using advanced AI and computer vision techniques!")
@@ -466,7 +476,7 @@ if uploaded_file is not None:
                     
                     realistic_image = Image.fromarray(realistic_image_array)
                     
-                    # Store results
+                    # Store results in session state
                     st.session_state.realistic_image = realistic_image
                     st.session_state.target_width = target_width
                     st.session_state.target_height = target_height
@@ -479,9 +489,12 @@ if uploaded_file is not None:
                     # Fallback to basic upscaling
                     fallback = pixel_image.resize((target_width, target_height), Image.LANCZOS)
                     st.session_state.realistic_image = fallback
+                    st.session_state.target_width = target_width
+                    st.session_state.target_height = target_height
+                    st.session_state.upscale_factor = upscale_factor
 
-        # Show results
-        if hasattr(st.session_state, 'realistic_image') and st.session_state.realistic_image:
+        # Show results (only if we have a realistic image)
+        if st.session_state.realistic_image is not None:
             with col2:
                 st.subheader("Generated Realistic Image")
                 st.image(
