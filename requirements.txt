@@ -4,3 +4,7 @@ Pillow
 matplotlib
 scikit-image
 opencv-python-headless
+realesrgan
+basicsr
+facexlib
+gfpgan
